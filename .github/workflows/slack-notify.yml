@@ -1,0 +1,27 @@
+name: Notify Slack on Update
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Slack notification
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        run: |
+          COMMIT_MSG="${{ github.event.head_commit.message }}"
+          COMMIT_URL="${{ github.event.head_commit.url }}"
+          PUSHER="${{ github.event.pusher.name }}"
+
+          curl -s -X POST https://slack.com/api/chat.postMessage \
+            -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"channel\": \"G0176CMM1N0\",
+              \"thread_ts\": \"1775677002.789249\",
+              \"text\": \"⭐ *Force Experiment extension updated* by ${PUSHER}\n\n*What changed:* ${COMMIT_MSG}\n\n:arrow_down: Re-download from GitHub: https://github.com/jduenckel-oss/fanatics-force-experiment\n\nTo update: unzip, replace your folder, hit refresh on the extension card in \`chrome://extensions\`\"
+            }"

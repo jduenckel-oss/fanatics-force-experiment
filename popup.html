@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      width: 340px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #fff;
+      color: #1a1a1a;
+    }
+
+    .header {
+      background: #002D72;
+      color: white;
+      padding: 11px 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .header h1 { font-size: 13px; font-weight: 700; letter-spacing: 0.2px; flex: 1; }
+
+    .content { padding: 14px; }
+
+    /* Detected badge */
+    .detected {
+      background: #EBF5EB;
+      border: 1px solid #A8D5A2;
+      border-radius: 6px;
+      padding: 7px 10px;
+      font-size: 11.5px;
+      color: #276227;
+      margin-bottom: 12px;
+      display: none;
+      align-items: center;
+      gap: 6px;
+    }
+    .detected.visible { display: flex; }
+    .detected-dot { width: 7px; height: 7px; background: #34A853; border-radius: 50%; flex-shrink: 0; }
+    .quick-clear-btn {
+      margin-left: auto;
+      background: none;
+      border: 1px solid #A8D5A2;
+      border-radius: 4px;
+      color: #276227;
+      font-size: 10.5px;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 2px 7px;
+      white-space: nowrap;
+      transition: background 0.15s;
+    }
+    .quick-clear-btn:hover { background: #D4EDDA; }
+
+    /* Stacked experiments */
+    .stack-toggle {
+      background: none;
+      border: none;
+      font-size: 11px;
+      color: #6685CC;
+      cursor: pointer;
+      padding: 0;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .stack-toggle:hover { color: #002D72; }
+    #stackedRows { margin-bottom: 4px; }
+    .stacked-row {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      margin-bottom: 7px;
+    }
+    .stacked-row input {
+      flex: 1;
+      padding: 6px 8px;
+      font-size: 13px;
+      margin-bottom: 0;
+    }
+    .stacked-variant-btns { display: flex; gap: 3px; flex-shrink: 0; }
+    .stacked-var-btn {
+      width: 26px;
+      height: 26px;
+      border: 1.5px solid #DDD;
+      border-radius: 5px;
+      background: #F5F5F5;
+      color: #888;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.12s;
+      padding: 0;
+    }
+    .stacked-var-btn:hover { border-color: #AAA; color: #444; background: #EBEBEB; }
+    .stacked-var-btn.selected[data-variant="A"] { background: #002D72; color: #fff; border-color: #002D72; }
+    .stacked-var-btn.selected[data-variant="B"] { background: #CC0000; color: #fff; border-color: #CC0000; }
+    .stacked-var-btn.selected[data-variant="C"] { background: #2E7D32; color: #fff; border-color: #2E7D32; }
+    .stacked-var-btn.selected[data-variant="D"] { background: #6A1B9A; color: #fff; border-color: #6A1B9A; }
+    .remove-stack-btn {
+      background: none;
+      border: none;
+      font-size: 15px;
+      color: #CCC;
+      cursor: pointer;
+      padding: 0 2px;
+      line-height: 1;
+    }
+    .remove-stack-btn:hover { color: #CC0000; }
+
+    /* Field labels */
+    .field-label {
+      font-size: 10.5px;
+      font-weight: 600;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      margin-bottom: 5px;
+    }
+
+    /* Experiment ID input */
+    .input-row { display: flex; gap: 6px; margin-bottom: 12px; }
+    input[type="text"] {
+      flex: 1;
+      padding: 8px 10px;
+      border: 1.5px solid #DDD;
+      border-radius: 6px;
+      font-size: 14px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      transition: border-color 0.15s;
+    }
+    input[type="text"]:focus { outline: none; border-color: #002D72; }
+    input[type="text"]::placeholder { color: #BBB; font-family: inherit; }
+
+    /* Site selector */
+    .site-row { margin-bottom: 12px; }
+    .site-current {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 10px;
+      background: #F0F4FF;
+      border: 1.5px solid #C5D3F5;
+      border-radius: 6px;
+      font-size: 12px;
+      color: #002D72;
+      font-weight: 600;
+    }
+    .site-dot { width: 7px; height: 7px; background: #002D72; border-radius: 50%; flex-shrink: 0; }
+    .site-current span { flex: 1; }
+    .site-change-btn {
+      background: none; border: none; font-size: 10.5px; color: #6685CC;
+      cursor: pointer; padding: 0; text-decoration: underline;
+    }
+    .site-change-btn:hover { color: #002D72; }
+    select {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1.5px solid #DDD;
+      border-radius: 6px;
+      font-size: 12.5px;
+      background: #fff;
+      cursor: pointer;
+      transition: border-color 0.15s;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23999' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      padding-right: 28px;
+    }
+    select:focus { outline: none; border-color: #002D72; }
+
+    /* Variant section */
+    .variants-label-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 6px;
+    }
+    .copy-mode-toggle {
+      background: none;
+      border: none;
+      font-size: 10.5px;
+      color: #AAA;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      padding: 0;
+      transition: color 0.15s;
+    }
+    .copy-mode-toggle:hover { color: #555; }
+    .copy-mode-toggle.active { color: #007A4C; font-weight: 600; }
+
+    /* Variant buttons */
+    .variant-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+    .variant-btn {
+      padding: 9px 4px;
+      border: none;
+      border-radius: 7px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+      text-align: center;
+    }
+    .variant-btn:hover { opacity: 0.85; transform: translateY(-1px); }
+    .variant-btn:active { transform: translateY(0); }
+    .variant-btn[data-variant="A"] { background: #002D72; color: #fff; }
+    .variant-btn[data-variant="B"] { background: #CC0000; color: #fff; }
+    .variant-btn[data-variant="C"] { background: #2E7D32; color: #fff; }
+    .variant-btn[data-variant="D"] { background: #6A1B9A; color: #fff; }
+
+    /* Copy mode styles */
+    .variant-btn.copy-mode[data-variant="A"] { background: #E8EDF7; color: #002D72; border: 1.5px solid #002D72; }
+    .variant-btn.copy-mode[data-variant="B"] { background: #FDECEA; color: #CC0000; border: 1.5px solid #CC0000; }
+    .variant-btn.copy-mode[data-variant="C"] { background: #E8F5E9; color: #2E7D32; border: 1.5px solid #2E7D32; }
+    .variant-btn.copy-mode[data-variant="D"] { background: #F3E5F5; color: #6A1B9A; border: 1.5px solid #6A1B9A; }
+
+    /* Status */
+    .status { font-size: 11.5px; min-height: 16px; margin-bottom: 10px; text-align: center; }
+    .status.error { color: #CC0000; }
+    .status.success { color: #276227; }
+    .status.copied { color: #007A4C; }
+
+    /* Divider */
+    .divider { border: none; border-top: 1px solid #EBEBEB; margin-bottom: 10px; }
+
+    /* Section header row */
+    .section-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .section-label {
+      font-size: 10.5px;
+      font-weight: 600;
+      color: #AAA;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+    .clear-btn {
+      background: none; border: none; font-size: 10.5px; color: #CCC; cursor: pointer; padding: 0;
+    }
+    .clear-btn:hover { color: #888; }
+
+    /* Live tests section */
+    .live-tests-section { margin-bottom: 10px; }
+    .live-tests-list {
+      max-height: 220px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .live-tests-list::-webkit-scrollbar { width: 4px; }
+    .live-tests-list::-webkit-scrollbar-thumb { background: #DDD; border-radius: 4px; }
+    .live-test-item {
+      padding: 6px 7px;
+      border-radius: 6px;
+      border: 1px solid #EEF0FF;
+      background: #FAFBFF;
+      transition: background 0.1s;
+    }
+    .live-test-item:hover { background: #F0F4FF; }
+    .live-test-top {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      margin-bottom: 5px;
+    }
+    .live-test-tnum {
+      font-size: 11px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-weight: 700;
+      color: #002D72;
+      flex-shrink: 0;
+    }
+    .live-test-name {
+      font-size: 11px;
+      color: #333;
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .live-test-status {
+      font-size: 9.5px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 10px;
+      flex-shrink: 0;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    .status-live { background: #E6F4EA; color: #276227; }
+    .status-ready { background: #FFF8E1; color: #B45309; }
+    .status-paused { background: #F5F5F5; color: #888; }
+    .status-other { background: #EEF0FF; color: #002D72; }
+    .live-test-bottom {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 4px;
+    }
+    .live-test-eid {
+      font-size: 10.5px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      color: #888;
+    }
+    .live-test-jira-link {
+      color: #AAA;
+      display: flex;
+      align-items: center;
+      flex-shrink: 0;
+      transition: color 0.15s;
+      margin-left: 2px;
+    }
+    .live-test-jira-link:hover { color: #002D72; }
+    .live-test-due {
+      font-size: 10px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .live-compare-btn {
+      padding: 2px 5px;
+      font-size: 9.5px;
+      font-weight: 700;
+      border: 1.5px solid #DDD;
+      border-radius: 4px;
+      background: #F5F5F5;
+      color: #888;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: all 0.12s;
+      letter-spacing: 0.5px;
+    }
+    .live-compare-btn:hover { border-color: #002D72; color: #002D72; background: #EBF0FF; }
+    .live-test-btns { display: flex; gap: 3px; }
+    .live-refresh-btn {
+      background: none;
+      border: none;
+      font-size: 11px;
+      color: #AAA;
+      cursor: pointer;
+      padding: 0;
+      transition: color 0.15s;
+      line-height: 1;
+    }
+    .live-refresh-btn:hover { color: #555; }
+    .live-refresh-btn.spinning { animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .live-error { font-size: 11px; color: #CC0000; padding: 4px 0; }
+    .live-empty { font-size: 11px; color: #CCC; padding: 2px 0; }
+    .live-loading { font-size: 11px; color: #AAA; padding: 4px 0; }
+    /* Live test tabs */
+    .live-tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 7px;
+    }
+    .live-tab {
+      flex: 1;
+      padding: 4px 8px;
+      font-size: 11px;
+      font-weight: 600;
+      border: 1.5px solid #E5E8F0;
+      border-radius: 6px;
+      background: #F5F7FF;
+      color: #888;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .live-tab:hover { border-color: #C5D3F5; color: #555; }
+    .live-tab.active {
+      background: #002D72;
+      color: #fff;
+      border-color: #002D72;
+    }
+
+    .live-search-row { margin-bottom: 6px; }
+    .live-search-row input {
+      width: 100%;
+      padding: 5px 9px;
+      font-size: 12px;
+      border: 1.5px solid #E5E8F0;
+      border-radius: 6px;
+      font-family: inherit;
+      color: #333;
+      background: #F8F9FF;
+      transition: border-color 0.15s;
+    }
+    .live-search-row input:focus { outline: none; border-color: #002D72; background: #fff; }
+    .live-search-row input::placeholder { color: #BBB; }
+
+    /* Pinned section */
+    #pinnedSection { margin-bottom: 8px; }
+    .pinned-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; }
+
+    /* Experiment list items (shared for pinned + recent) */
+    .exp-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 5px 6px;
+      border-radius: 6px;
+      transition: background 0.1s;
+      min-height: 32px;
+    }
+    .exp-item:hover { background: #F5F7FF; }
+    .exp-item.pinned-item { background: #FAFBFF; border: 1px solid #E5EAFF; }
+    .exp-item.pinned-item:hover { background: #F0F4FF; }
+
+    .pin-btn {
+      background: none; border: none; cursor: pointer; padding: 1px 2px; font-size: 13px;
+      opacity: 0.35; transition: opacity 0.15s; flex-shrink: 0; line-height: 1;
+    }
+    .pin-btn:hover { opacity: 0.7; }
+    .pin-btn.pinned { opacity: 1; }
+
+    .exp-info {
+      flex: 1;
+      min-width: 0;
+      cursor: pointer;
+    }
+    .exp-id {
+      font-size: 12.5px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      color: #002D72;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .exp-note {
+      font-size: 10.5px;
+      color: #999;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .exp-note.placeholder { color: #DDD; font-style: italic; }
+    .exp-info:hover .exp-id { text-decoration: underline; }
+
+    /* Inline note editor */
+    .note-input {
+      width: 100%;
+      font-size: 10.5px;
+      border: 1px solid #C5D3F5;
+      border-radius: 4px;
+      padding: 2px 5px;
+      outline: none;
+      font-family: inherit;
+      color: #333;
+      margin-top: 1px;
+    }
+
+    .mini-btns { display: flex; gap: 3px; flex-shrink: 0; }
+    .mini-btn {
+      padding: 3px 6px;
+      border: none;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .mini-btn:hover { opacity: 0.8; }
+    .mini-btn[data-variant="A"] { background: #002D72; color: #fff; }
+    .mini-btn[data-variant="B"] { background: #CC0000; color: #fff; }
+    .mini-btn[data-variant="C"] { background: #2E7D32; color: #fff; }
+    .mini-btn[data-variant="D"] { background: #6A1B9A; color: #fff; }
+
+    .empty-state { font-size: 12px; color: #CCC; padding: 2px 0; }
+
+    .recent-list { display: flex; flex-direction: column; gap: 4px; }
+
+    /* Settings button in header */
+    .settings-btn {
+      background: none; border: none; cursor: pointer; padding: 3px;
+      color: rgba(255,255,255,0.65); border-radius: 4px;
+      display: flex; align-items: center; justify-content: center;
+      transition: color 0.15s, background 0.15s;
+      flex-shrink: 0;
+    }
+    .settings-btn:hover { color: #fff; background: rgba(255,255,255,0.15); }
+    .settings-btn.active { color: #FFD700; }
+
+    /* Settings panel */
+    .settings-panel {
+      background: #F7F9FF;
+      border-bottom: 2px solid #002D72;
+      padding: 14px;
+    }
+    .settings-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #002D72;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .settings-close-btn {
+      background: none; border: none; cursor: pointer;
+      font-size: 12px; color: #AAA; padding: 0; line-height: 1;
+      transition: color 0.15s;
+    }
+    .settings-close-btn:hover { color: #555; }
+    .settings-desc {
+      font-size: 10.5px;
+      color: #777;
+      margin-bottom: 10px;
+      line-height: 1.45;
+    }
+    .settings-field { margin-bottom: 8px; }
+    .settings-label {
+      display: block;
+      font-size: 10.5px;
+      font-weight: 600;
+      color: #555;
+      margin-bottom: 4px;
+    }
+    .settings-field input {
+      width: 100%;
+      padding: 7px 9px;
+      border: 1.5px solid #DDD;
+      border-radius: 6px;
+      font-size: 12.5px;
+      font-family: inherit;
+      background: #fff;
+    }
+    .settings-field input:focus { outline: none; border-color: #002D72; }
+    .settings-link {
+      display: block;
+      font-size: 10px;
+      color: #6685CC;
+      text-decoration: none;
+      margin-top: 4px;
+    }
+    .settings-link:hover { color: #002D72; text-decoration: underline; }
+    .settings-save-btn {
+      width: 100%;
+      padding: 8px;
+      background: #002D72;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+      margin-top: 2px;
+    }
+    .settings-save-btn:hover { background: #001D4F; }
+    .settings-status {
+      font-size: 11px;
+      min-height: 16px;
+      margin-top: 6px;
+      text-align: center;
+    }
+    .settings-status.ok { color: #276227; }
+    .settings-status.err { color: #CC0000; }
+
+    /* No-creds nudge in live tests */
+    .live-setup-nudge {
+      font-size: 11px;
+      color: #888;
+      padding: 4px 0;
+      line-height: 1.5;
+    }
+    .live-setup-nudge a {
+      color: #6685CC;
+      text-decoration: none;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .live-setup-nudge a:hover { color: #002D72; text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <path d="M8 1L10 6H15L11 9.5L12.5 15L8 12L3.5 15L5 9.5L1 6H6L8 1Z" fill="#FFD700" stroke="#FFD700" stroke-width="0.5" stroke-linejoin="round"/>
+    </svg>
+    <h1>Force Experiment</h1>
+    <button class="settings-btn" id="settingsBtn" title="JIRA settings">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="8" cy="8" r="2.5"/>
+        <path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3.1 3.1l1.06 1.06M11.84 11.84l1.06 1.06M3.1 12.9l1.06-1.06M11.84 4.16l1.06-1.06"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Settings panel -->
+  <div id="settingsPanel" class="settings-panel" style="display:none">
+    <div class="settings-header">
+      <span>JIRA API Credentials</span>
+      <button class="settings-close-btn" id="settingsCloseBtn">✕</button>
+    </div>
+    <p class="settings-desc">Used to load live tests from JIRA. Your token is stored locally in this extension only.</p>
+    <div class="settings-field">
+      <label class="settings-label">Atlassian Email</label>
+      <input type="email" id="jiraEmail" placeholder="you@fanatics.com" />
+    </div>
+    <div class="settings-field">
+      <label class="settings-label">API Token</label>
+      <input type="password" id="jiraToken" placeholder="Paste token here" />
+      <a class="settings-link" href="https://id.atlassian.com/manage/api-tokens" target="_blank">Generate token ↗</a>
+    </div>
+    <button class="settings-save-btn" id="settingsSaveBtn">Save & Load Tests</button>
+    <div class="settings-status" id="settingsStatus"></div>
+  </div>
+
+  <div class="content">
+    <div id="detectedBadge" class="detected">
+      <div class="detected-dot"></div>
+      <span id="detectedText"></span>
+      <button class="quick-clear-btn" id="quickClearBtn" style="display:none">✕ Clear force</button>
+    </div>
+
+    <div class="field-label">Experiment ID</div>
+    <div class="input-row">
+      <input type="text" id="expId" placeholder="e.g. 19403" maxlength="10" />
+    </div>
+
+    <!-- Stacked experiments -->
+    <div id="stackedRows"></div>
+    <button class="stack-toggle" id="stackToggle">⊕ Stack another experiment</button>
+
+    <div class="field-label">Site</div>
+    <div class="site-row">
+      <div id="siteCurrentRow" class="site-current" style="display:none">
+        <div class="site-dot"></div>
+        <span id="siteCurrentLabel">fanatics.com</span>
+        <button class="site-change-btn" id="siteChangeBtn">change</button>
+      </div>
+      <select id="sitePicker" style="display:none">
+        <optgroup label="Fanatics">
+          <option value="https://www.fanatics.com">Fanatics.com</option>
+          <option value="https://www.fanatics.co.uk">Fanatics UK</option>
+          <option value="https://www.fanatics.ca">Fanatics CA</option>
+          <option value="https://www.fanatics.fr">Fanatics FR</option>
+          <option value="https://www.fanatics.de">Fanatics DE</option>
+          <option value="https://www.fanatics.it">Fanatics IT</option>
+          <option value="https://www.fanatics.jp">Fanatics JP</option>
+          <option value="https://www.fanatics.es">Fanatics ES</option>
+        </optgroup>
+        <optgroup label="League Shops">
+          <option value="https://www.mlbshop.com">MLB Shop</option>
+          <option value="https://www.nflshop.com">NFL Shop</option>
+          <option value="https://www.nbastore.com">NBA Store</option>
+          <option value="https://shop.nhl.com">NHL Shop</option>
+          <option value="https://www.mlsstore.com">MLS Store</option>
+          <option value="https://www.nflshop.ca">NFL Shop CA</option>
+          <option value="https://www.mlbshop.ca">MLB Shop CA</option>
+          <option value="https://www.nbastore.ca">NBA Store CA</option>
+          <option value="https://www.mlbshopeurope.com">MLB Shop Europe</option>
+          <option value="https://www.nbastore.eu">NBA Store EU</option>
+          <option value="https://europe.nflshop.com">NFL Shop Europe</option>
+        </optgroup>
+        <optgroup label="Fanatics Brands">
+          <option value="https://www.lids.com">Lids</option>
+          <option value="https://www.lids.ca">Lids CA</option>
+          <option value="https://www.fansedge.com">FansEdge</option>
+          <option value="https://www.mitchellandness.com">Mitchell &amp; Ness</option>
+          <option value="https://www.mitchellandness.eu">Mitchell &amp; Ness EU</option>
+          <option value="https://www.kitbag.com">Kitbag</option>
+        </optgroup>
+        <optgroup label="App Sites">
+          <option value="https://ios.fanapp.frgapps.com">Fanatics iOS App</option>
+          <option value="https://android.fanapp.frgapps.com">Fanatics Android App</option>
+        </optgroup>
+        <optgroup label="Other Properties">
+          <option value="https://www.ufcstore.com">UFC Store</option>
+          <option value="https://shop.wwe.com">WWE Shop</option>
+          <option value="https://store.nascar.com">NASCAR Store</option>
+          <option value="https://f1store.formula1.com">F1 Store</option>
+          <option value="https://store.nba.com">NBA.com Store</option>
+          <option value="https://www.fanoutfitters.com">Fan Outfitters</option>
+        </optgroup>
+      </select>
+    </div>
+
+    <!-- Variant buttons -->
+    <div class="variants-label-row">
+      <span class="field-label" style="margin:0">Variant</span>
+      <button class="copy-mode-toggle" id="copyModeToggle">
+        <svg width="11" height="11" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="4" y="4" width="8" height="8" rx="1.5"/>
+          <path d="M2 10V2h8"/>
+        </svg>
+        Copy URL mode
+      </button>
+    </div>
+    <div class="variant-grid" id="variantGrid">
+      <button class="variant-btn" data-variant="A">A</button>
+      <button class="variant-btn" data-variant="B">B</button>
+      <button class="variant-btn" data-variant="C">C</button>
+      <button class="variant-btn" data-variant="D">D</button>
+    </div>
+
+    <div class="status" id="status"></div>
+
+    <hr class="divider">
+
+    <!-- Live Tests from JIRA -->
+    <hr class="divider">
+    <div class="live-tests-section">
+      <div class="section-row">
+        <span class="section-label">🟢 Live Tests</span>
+        <button class="live-refresh-btn" id="liveRefreshBtn" title="Refresh">↻</button>
+      </div>
+      <div class="live-tabs">
+        <button class="live-tab active" id="tabThisSite">This site</button>
+        <button class="live-tab" id="tabAll">All</button>
+      </div>
+      <div class="live-search-row">
+        <input type="text" id="liveSearch" placeholder="Search by name, T#, or EID…" autocomplete="off" />
+      </div>
+      <div id="liveTestsList" class="live-tests-list">
+        <div class="live-loading">Loading…</div>
+      </div>
+    </div>
+
+    <!-- Pinned experiments -->
+    <div id="pinnedSection" style="display:none">
+      <div class="section-row">
+        <span class="section-label">📌 Pinned</span>
+      </div>
+      <div class="pinned-list" id="pinnedList"></div>
+      <hr class="divider">
+    </div>
+
+    <!-- Recent experiments -->
+    <div class="section-row">
+      <span class="section-label">Recent</span>
+      <button class="clear-btn" id="clearRecent">Clear</button>
+    </div>
+    <div class="recent-list" id="recentList"></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
