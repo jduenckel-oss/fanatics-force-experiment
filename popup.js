@@ -594,7 +594,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        jql: 'filter=28941 ORDER BY updated DESC',
+        jql: 'filter=30958 ORDER BY updated DESC',
         fields: ['summary', 'status', 'customfield_15089', 'duedate'],
         maxResults: 50,
       }),
