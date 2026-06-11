@@ -617,7 +617,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const name     = summary.replace(/^T\d+[-\s]*/i, '').trim();
       const dueDate  = issue.fields.duedate || null;
       return { tNum, name, status, eid, key: issue.key, dueDate };
-    }).filter(t => t.eid);
+    });
   }
 
   function renderLiveTests(tests) {
@@ -677,13 +677,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       const eidSpan = document.createElement('span');
       eidSpan.className = 'live-test-eid';
-      eidSpan.textContent = `EID: ${test.eid}`;
-      eidSpan.style.cursor = 'pointer';
-      eidSpan.title = 'Click to load';
-      eidSpan.addEventListener('click', () => {
-        expIdInput.value = test.eid;
-        expIdInput.focus();
-      });
+      if (test.eid) {
+        eidSpan.textContent = `EID: ${test.eid}`;
+        eidSpan.style.cursor = 'pointer';
+        eidSpan.title = 'Click to load';
+        eidSpan.addEventListener('click', () => {
+          expIdInput.value = test.eid;
+          expIdInput.focus();
+        });
+      } else {
+        eidSpan.textContent = 'No EID';
+        eidSpan.style.color = '#CCC';
+        eidSpan.title = 'Experiment Link not set in JIRA';
+      }
 
       // Due date badge
       const dueBadge = document.createElement('span');
@@ -709,9 +715,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       // Compare A vs B button
       const compareBtn = document.createElement('button');
       compareBtn.className = 'live-compare-btn';
-      compareBtn.title = 'Open A and B side by side';
+      compareBtn.title = test.eid ? 'Open A and B side by side' : 'No EID — cannot compare';
       compareBtn.textContent = 'A|B';
+      if (!test.eid) {
+        compareBtn.disabled = true;
+        compareBtn.style.opacity = '0.3';
+        compareBtn.style.cursor = 'not-allowed';
+      }
       compareBtn.addEventListener('click', async () => {
+        if (!test.eid) return;
         expIdInput.value = test.eid;
         const base = (!isSwitchingSite() && onFanaticsSite)
           ? (() => { try { const u = new URL(tabUrl); u.searchParams.delete('__forceExperiment'); return u.toString(); } catch(_) { return 'https://www.fanatics.com'; } })()
@@ -728,14 +740,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         btn.className = 'mini-btn';
         btn.dataset.variant = v;
         btn.textContent = v;
-        btn.addEventListener('click', async () => {
-          expIdInput.value = test.eid;
-          if (copyMode) {
-            await copyForceUrl(v);
-          } else {
-            await forceVariant(v);
-          }
-        });
+        if (!test.eid) {
+          btn.disabled = true;
+          btn.style.opacity = '0.25';
+          btn.style.cursor = 'not-allowed';
+          btn.title = 'No EID — Experiment Link not set in JIRA';
+        } else {
+          btn.addEventListener('click', async () => {
+            expIdInput.value = test.eid;
+            if (copyMode) {
+              await copyForceUrl(v);
+            } else {
+              await forceVariant(v);
+            }
+          });
+        }
         btns.appendChild(btn);
       });
 
