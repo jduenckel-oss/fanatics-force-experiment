@@ -595,7 +595,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       },
       body: JSON.stringify({
         jql: 'filter=30958 ORDER BY updated DESC',
-        fields: ['summary', 'status', 'customfield_15089', 'duedate'],
+        fields: ['summary', 'status', 'customfield_15089', 'customfield_17710', 'duedate'],
         maxResults: 50,
       }),
     });
@@ -609,9 +609,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     return (data.issues || []).map(issue => {
       const summary  = issue.fields.summary || '';
       const status   = issue.fields.status?.name || '';
-      const sparkUrl = issue.fields.customfield_15089 || '';
-      const eidMatch = sparkUrl.match(/[?&]experimentId=(\d+)/);
-      const eid      = eidMatch ? eidMatch[1] : null;
+      // Try "Experiment IDs" field first (customfield_17710), fall back to parsing Experiment Link URL
+      const eidDirect = (issue.fields.customfield_17710 || '').trim();
+      const sparkUrl  = issue.fields.customfield_15089 || '';
+      const eidMatch  = sparkUrl.match(/[?&]experimentId=(\d+)/);
+      const eid       = eidDirect || (eidMatch ? eidMatch[1] : null);
       const tMatch   = summary.match(/T(\d+)/i);
       const tNum     = tMatch ? `T${tMatch[1]}` : issue.key;
       const name     = summary.replace(/^T\d+[-\s]*/i, '').trim();
