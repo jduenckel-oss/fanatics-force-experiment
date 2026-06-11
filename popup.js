@@ -70,6 +70,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const sitePicker       = document.getElementById('sitePicker');
   const variantGrid      = document.getElementById('variantGrid');
   const copyModeToggle   = document.getElementById('copyModeToggle');
+  const disableAllBtn    = document.getElementById('disableAllBtn');
   const stackToggle      = document.getElementById('stackToggle');
   const stackedRowsEl    = document.getElementById('stackedRows');
 
@@ -366,6 +367,31 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     });
   }
+
+  // ── Disable All button ──────────────────────────────────────────────────────
+  disableAllBtn.addEventListener('click', async () => {
+    let base;
+    if (!isSwitchingSite() && onFanaticsSite) {
+      try {
+        const url = new URL(tabUrl);
+        url.searchParams.delete('__forceExperiment');
+        base = url.toString();
+      } catch (_) {
+        base = 'https://www.fanatics.com';
+      }
+    } else {
+      base = isSwitchingSite() ? sitePicker.value : 'https://www.fanatics.com';
+    }
+    const sep = base.includes('?') ? '&' : '?';
+    const disableUrl = `${base}${sep}__forceExperiment=disabled`;
+
+    if (!isSwitchingSite() && onFanaticsSite) {
+      await chrome.tabs.update(tab.id, { url: disableUrl });
+    } else {
+      await chrome.tabs.create({ url: disableUrl });
+    }
+    window.close();
+  });
 
   // ── Copy mode toggle ────────────────────────────────────────────────────────
   copyModeToggle.addEventListener('click', () => {
@@ -712,6 +738,28 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
         btns.appendChild(btn);
       });
+
+      // Mini disable button for this test's site
+      const miniDisableBtn = document.createElement('button');
+      miniDisableBtn.className = 'mini-disable-btn';
+      miniDisableBtn.title = 'Disable all experiments for this session';
+      miniDisableBtn.textContent = '⊘';
+      miniDisableBtn.addEventListener('click', async () => {
+        let base;
+        if (!isSwitchingSite() && onFanaticsSite) {
+          try {
+            const url = new URL(tabUrl);
+            url.searchParams.delete('__forceExperiment');
+            base = url.toString();
+          } catch (_) { base = 'https://www.fanatics.com'; }
+        } else {
+          base = isSwitchingSite() ? sitePicker.value : 'https://www.fanatics.com';
+        }
+        const sep = base.includes('?') ? '&' : '?';
+        await chrome.tabs.update(tab.id, { url: `${base}${sep}__forceExperiment=disabled` });
+        window.close();
+      });
+      btns.appendChild(miniDisableBtn);
 
       bottom.appendChild(eidSpan);
       if (test.dueDate) bottom.appendChild(dueBadge);
