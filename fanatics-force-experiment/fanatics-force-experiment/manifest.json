@@ -1,0 +1,71 @@
+{
+  "manifest_version": 3,
+  "name": "Fanatics Force Experiment",
+  "version": "1.1",
+  "description": "One-click force into A/B test variants across Fanatics-managed sites. Auto-detects from Confluence briefs.",
+  "permissions": ["activeTab", "storage", "tabs", "scripting"],
+  "host_permissions": [
+    "*://*.fanatics.com/*",
+    "*://*.fanatics.co.uk/*",
+    "*://*.fanatics.ca/*",
+    "*://*.fanatics.fr/*",
+    "*://*.fanatics.de/*",
+    "*://*.fanatics.it/*",
+    "*://*.fanatics.jp/*",
+    "*://*.fanatics.es/*",
+    "*://*.fanatics.mx/*",
+    "*://*.fanatics.co.kr/*",
+    "*://*.fansedge.com/*",
+    "*://*.mlbshop.com/*",
+    "*://*.mlbshop.ca/*",
+    "*://*.mlbshopeurope.com/*",
+    "*://*.mlbshop.jp/*",
+    "*://*.nflshop.com/*",
+    "*://*.nflshop.ca/*",
+    "*://*.nflshop.com.au/*",
+    "*://*.nbastore.com/*",
+    "*://*.nbastore.ca/*",
+    "*://*.nbastore.eu/*",
+    "*://*.nbastore.jp/*",
+    "*://*.nbastore.com.au/*",
+    "*://*.nhl.com/*",
+    "*://*.nhlshop.ca/*",
+    "*://*.lids.com/*",
+    "*://*.lids.ca/*",
+    "*://*.mitchellandness.com/*",
+    "*://*.mitchellandness.eu/*",
+    "*://*.mitchellandness.co.uk/*",
+    "*://*.kitbag.com/*",
+    "*://*.mlsstore.com/*",
+    "*://*.mlsstore.ca/*",
+    "*://*.ufcstore.com/*",
+    "*://*.ufcstore.eu/*",
+    "*://*.wwe.com/*",
+    "*://*.wweshop.ca/*",
+    "*://*.nascar.com/*",
+    "*://*.formula1.com/*",
+    "*://*.teamfanshop.com/*",
+    "*://*.spirit.bncollege.com/*",
+    "*://*.shoptruespirit.com/*",
+    "*://*.frgapps.com/*",
+    "*://*.atlassian.net/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.atlassian.net/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
