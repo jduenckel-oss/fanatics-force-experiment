@@ -5,7 +5,7 @@ const FANATICS_DOMAINS = [
   'fanatics.co.kr', 'fanatics-intl.com', 'fansedge.com', 'fanoutfitters.com',
   'mlbshop.com', 'mlbshop.ca', 'mlbshopeurope.com', 'mlbshop.jp',
   'nflshop.com', 'nflshop.ca', 'nflshop.com.au',
-  'nbastore.com', 'nbastore.ca', 'nbastore.eu', 'nbastore.jp', 'nbastore.com.au',
+  'nbastore.com', 'nbastore.ca', 'nbastore.eu', 'nbastore.jp', 'nbastore.com.au', 'store.nba.com',
   'nhl.com', 'nhlshop.ca',
   'mlsstore.com', 'mlsstore.ca',
   'lids.com', 'lids.ca',
@@ -38,6 +38,7 @@ function getFriendlyLabel(hostname) {
   if (hostname.includes('nascar'))          return 'NASCAR Store';
   if (hostname.includes('formula1'))        return 'F1 Store';
   if (hostname.includes('motogp'))          return 'MotoGP Store';
+  if (hostname.includes('fanoutfitters'))   return 'Fan Outfitters';
   if (hostname.includes('bncollege') || hostname.includes('shoptruespirit')) return hostname;
   if (hostname.includes('fanatics'))        return hostname.replace('www.', '');
   return hostname;
@@ -217,7 +218,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const LABEL_MAP = {
       'mlb':      'mlbshop',
       'nfl':      'nflshop',
-      'nba':      'nbastore',
+      'nba':      'nba',
       'nhl':      'nhl',
       'mls':      'mlsstore',
       'lids':     'lids',
@@ -459,7 +460,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     { key: 'fanatics',        include: ['fan'],   exclude: ['fan app', 'fanapp'] },
     { key: 'mlbshop',         include: ['mlb'] },
     { key: 'nflshop',         include: ['nfl'] },
-    { key: 'nbastore',        include: ['nba'] },
+    { key: 'nba',             include: ['nba'] },
     { key: 'nhl',             include: ['nhl'] },
     { key: 'mlsstore',        include: ['mls'] },
     { key: 'lids',            include: ['lids'] },
@@ -470,6 +471,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     { key: 'wwe',             include: ['wwe'] },
     { key: 'nascar',          include: ['nascar'] },
     { key: 'formula1',        include: ['f1 '] },
+    { key: 'fanoutfitters',   include: ['fanoutfitters', 'fan outfitters'] },
   ];
 
   function getRulesForHost(hostname) {
