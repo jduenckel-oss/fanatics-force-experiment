@@ -554,13 +554,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   // than one attempt — retries here are just a safety net for very early injection.
   async function extractResolvedIds(tabId, attempts = 4, delayMs = 400) {
     for (let i = 0; i < attempts; i++) {
-      const [injection] = await chrome.scripting.executeScript({ target: { tabId }, func: EXTRACT_IDS_FN });
+      // world: 'MAIN' is required here — executeScript defaults to the extension's
+      // ISOLATED world, which has its own separate global scope. window.__platform_data__
+      // is set by the page's own inline script in the MAIN world, so without this it
+      // reads back as undefined every time and silently falls through to the weaker
+      // fallbacks below (confirmed root cause of org coming back null in real testing,
+      // even though it worked in direct page-context testing that doesn't have this
+      // isolated/main world split).
+      const [injection] = await chrome.scripting.executeScript({ target: { tabId }, func: EXTRACT_IDS_FN, world: 'MAIN' });
       const result = injection && injection.result;
       if (result && result.product) {
         if (result.org) return result; // fully resolved, correctly paired — done
         // Have a product ID but no paired org yet (platform_data unavailable) —
         // see if the nav request can supply a matched org+team pair instead.
-        const [pairInjection] = await chrome.scripting.executeScript({ target: { tabId }, func: EXTRACT_NAV_PAIR_FN });
+        const [pairInjection] = await chrome.scripting.executeScript({ target: { tabId }, func: EXTRACT_NAV_PAIR_FN, world: 'MAIN' });
         const pair = pairInjection && pairInjection.result;
         if (pair && pair.org) return { org: pair.org, team: pair.team, product: result.product };
         if (i === attempts - 1) return { org: null, team: null, product: result.product };
