@@ -514,33 +514,45 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (_) { return '25'; }
   }
 
-  // Extracts the short-scheme Team ID needed for the "featured department carousel"
-  // to appear on FPP pages. IMPORTANT: this is NOT the team number visible in a copied
-  // PDP URL (that's a different, incompatible "big ID" namespace and 404s if reused
-  // here), and it's NOT a department/category breadcrumb team ID either (also a
-  // different namespace, also 404s) — both were tested and confirmed broken.
-  // The correct short-scheme team ID only shows up via the page's own nav content
-  // request: /content/nav/{ver}/{site}/contextual/t-{shortTeamId}-en-US.json. That
-  // request is visible in the browser's Resource Timing API, so we can read it off
-  // any live page (foreground or background tab) without extra permissions.
-  // Confirmed live on both NFL (Broncos → t-3427) and MLB (Reds → t-3082) PDPs, and
-  // that including it does not break the FPP link — it still renders data-trk-id="FPP".
-  const EXTRACT_TEAM_ID_FN = () => {
+  // Extracts the short-scheme Team ID (and its correctly-PAIRED Org ID) needed for
+  // the "featured department carousel" to appear on FPP pages (confirmed mobile-
+  // viewport-only). IMPORTANT: the team ID is NOT the team number visible in a
+  // copied PDP URL (a different, incompatible namespace — 404s if reused here), and
+  // it's NOT a department/category breadcrumb team ID either (also 404s) — both
+  // tested and confirmed broken. It's also NOT safe to pair the correct team ID with
+  // the *product's own* org ID — confirmed org 8049 (49ers jersey's own org) + team
+  // 3447 (49ers' real short-team-id) still 404s. Org and team must come from the
+  // SAME matched pair.
+  // That matched pair is exposed in the body of the page's own nav content request:
+  // /content/nav/{ver}/{site}/contextual/t-{shortTeamId}-en-US.json, whose JSON
+  // contains entries like "baseResource":"o-25+t-3447" — org and team together,
+  // straight from Fanatics' own data, no guessing. The request URL itself is visible
+  // via the Resource Timing API and the JSON body is same-origin-fetchable, so both
+  // work from a live page (foreground or background tab) without extra permissions.
+  // Confirmed against a known-good real link Shreya/Jake verified shows the carousel
+  // on mobile: https://www.fanatics.com/o-25+t-3447+f-5111108 — this extraction
+  // reproduces o-25 / t-3447 / f-5111108 exactly from the 49ers PDP.
+  const EXTRACT_TEAM_CONTEXT_FN = async () => {
     try {
       const entries = performance.getEntriesByType('resource').map(e => e.name);
-      for (const url of entries) {
-        const m = url.match(/\/contextual\/t-(\d+)-/);
-        if (m) return m[1];
-      }
-    } catch (_) {}
-    return null;
+      const navUrl = entries.find(u => /\/contextual\/t-\d+-/.test(u));
+      if (!navUrl) return null;
+      const res = await fetch(navUrl);
+      const text = await res.text();
+      const paired = text.match(/"baseResource":"o-(\d+)\+t-(\d+)/);
+      if (paired) return { org: paired[1], team: paired[2] };
+      // Fallback: we found the nav request but couldn't parse the paired org out of
+      // its body — return the team alone so the caller can decide whether to use it.
+      const teamOnly = navUrl.match(/\/contextual\/t-(\d+)-/);
+      return teamOnly ? { org: null, team: teamOnly[1] } : null;
+    } catch (_) { return null; }
   };
 
-  async function extractTeamIdWithRetry(tabId, attempts = 6, delayMs = 500) {
+  async function extractTeamContextWithRetry(tabId, attempts = 6, delayMs = 500) {
     for (let i = 0; i < attempts; i++) {
-      const [injection] = await chrome.scripting.executeScript({ target: { tabId }, func: EXTRACT_TEAM_ID_FN });
-      const teamId = injection && injection.result;
-      if (teamId) return teamId;
+      const [injection] = await chrome.scripting.executeScript({ target: { tabId }, func: EXTRACT_TEAM_CONTEXT_FN });
+      const context = injection && injection.result;
+      if (context && context.team) return context;
       if (i < attempts - 1) await new Promise(r => setTimeout(r, delayMs));
     }
     return null;
@@ -551,9 +563,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   async function resolveToShortFppUrl(rawUrl, existingTabId) {
     if (isBareShortUrl(rawUrl)) return rawUrl; // already the right shape
 
-    const org = extractOrg(rawUrl);
+    const fallbackOrg = extractOrg(rawUrl);
     let productId = null;
-    let teamId = null;
+    let context = null;
     let tempTab = null;
 
     try {
@@ -570,13 +582,16 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       productId = await extractProdIdWithRetry(targetTabId);
-      teamId = await extractTeamIdWithRetry(targetTabId);
+      context = await extractTeamContextWithRetry(targetTabId);
     } finally {
       if (tempTab) { try { await chrome.tabs.remove(tempTab.id); } catch (_) {} }
     }
 
     if (!productId) return null;
-    const teamSeg = teamId ? `t-${teamId}+` : '';
+    // Only include the team segment when we got a properly-paired org for it —
+    // team + mismatched org 404s, so an unpaired team ID is dropped rather than guessed.
+    const org = (context && context.org) ? context.org : fallbackOrg;
+    const teamSeg = (context && context.org && context.team) ? `t-${context.team}+` : '';
     return `https://www.fanatics.com/o-${org}+${teamSeg}f-${productId}`;
   }
 
@@ -593,10 +608,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
       const productId = await extractProdIdWithRetry(tab.id, 3, 400); // current tab has likely been open a while, so fewer/shorter retries
       if (productId) {
-        const teamId = await extractTeamIdWithRetry(tab.id, 3, 400);
-        const teamSeg = teamId ? `t-${teamId}+` : '';
-        fppUrlInput.value = `https://www.fanatics.com/o-${extractOrg(tabUrl)}+${teamSeg}f-${productId}`;
-        fppAutoDetected.textContent = `✓ Auto-detected from this page (short ID ${productId}${teamId ? `, team ${teamId}` : ''})`;
+        const context = await extractTeamContextWithRetry(tab.id, 3, 400);
+        const org = (context && context.org) ? context.org : extractOrg(tabUrl);
+        const teamSeg = (context && context.org && context.team) ? `t-${context.team}+` : '';
+        fppUrlInput.value = `https://www.fanatics.com/o-${org}+${teamSeg}f-${productId}`;
+        fppAutoDetected.textContent = `✓ Auto-detected from this page (short ID ${productId}${teamSeg ? `, team ${context.team}` : ''})`;
         fppAutoDetected.style.display = 'block';
         updateFppPreview();
       }
