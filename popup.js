@@ -444,34 +444,75 @@ document.addEventListener('DOMContentLoaded', async () => {
   renderLists();
 
   // ── FPP / Channel Link Builder ──────────────────────────────────────────────
-  const fppPreset       = document.getElementById('fppPreset');
-  const fppOrgInput     = document.getElementById('fppOrg');
-  const fppTeamInput    = document.getElementById('fppTeam');
-  const fppProductInput = document.getElementById('fppProduct');
+  // Works by taking a real PDP URL (pasted, from a preset, or the current tab)
+  // and appending/overriding utm_medium — no ID reconstruction, so it's safe
+  // against Fanatics' different internal ID schemes.
+  const fppPreset        = document.getElementById('fppPreset');
+  const fppUrlInput      = document.getElementById('fppUrlInput');
   const fppChannelToggle = document.getElementById('fppChannelToggle');
-  const fppVariantRow   = document.getElementById('fppVariantRow');
-  const fppPreviewUrl   = document.getElementById('fppPreviewUrl');
-  const fppOpenBtn      = document.getElementById('fppOpenBtn');
-  const fppCopyBtn      = document.getElementById('fppCopyBtn');
+  const fppVariantRow    = document.getElementById('fppVariantRow');
+  const fppPreviewUrl    = document.getElementById('fppPreviewUrl');
+  const fppOpenBtn       = document.getElementById('fppOpenBtn');
+  const fppCopyBtn       = document.getElementById('fppCopyBtn');
+  const fppAutoDetected  = document.getElementById('fppAutoDetected');
 
   let fppChannel = 'social';
   let fppVariant = '';
 
-  // Default Org to 25 (Fanatics.com) since that's what all current presets use
-  fppOrgInput.value = '25';
+  function looksLikePdpUrl(u) {
+    try { return /[+/](?:p|f)-\d+/.test(new URL(u).pathname); } catch (_) { return false; }
+  }
+
+  // ── Auto-fill from the current tab if it's a PDP ────────────────────────────
+  (async () => {
+    try {
+      if (onFanaticsSite && looksLikePdpUrl(tabUrl)) {
+        fppUrlInput.value = tabUrl;
+        fppAutoDetected.textContent = '✓ Auto-filled from this page';
+        fppAutoDetected.style.display = 'block';
+        updateFppPreview();
+        return;
+      }
+      // Fallback for fanatics.com pages where the URL itself doesn't show a p-/f- id
+      // (e.g. it was rewritten client-side) — read it from the page's own analytics data.
+      const hostname = currentHostname.replace(/^www\./, '');
+      if (hostname !== 'fanatics.com') return;
+
+      const [injection] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => {
+          try {
+            const dl = window.dataLayer || [];
+            for (const entry of dl) {
+              if (entry && entry[2] && entry[2].ecomm_pagetype === 'PDP' && entry[2].ecomm_prodid) {
+                return String(entry[2].ecomm_prodid);
+              }
+            }
+          } catch (_) {}
+          return null;
+        },
+      });
+
+      const productId = injection && injection.result;
+      if (productId) {
+        fppUrlInput.value = `https://www.fanatics.com/o-25+f-${productId}`;
+        fppAutoDetected.textContent = `✓ Product ID ${productId} auto-detected (reconstructed — team ID omitted)`;
+        fppAutoDetected.style.display = 'block';
+        updateFppPreview();
+      }
+    } catch (_) {
+      // Silently ignore — manual paste / presets still work
+    }
+  })();
 
   fppPreset.addEventListener('change', () => {
     if (!fppPreset.value) return;
-    const [org, team, product] = fppPreset.value.split(':');
-    fppOrgInput.value = org;
-    fppTeamInput.value = team;
-    fppProductInput.value = product;
+    fppUrlInput.value = fppPreset.value;
+    fppAutoDetected.style.display = 'none';
     updateFppPreview();
   });
 
-  [fppOrgInput, fppTeamInput, fppProductInput].forEach(el => {
-    el.addEventListener('input', updateFppPreview);
-  });
+  fppUrlInput.addEventListener('input', updateFppPreview);
 
   fppChannelToggle.querySelectorAll('.fpp-channel-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -495,25 +536,32 @@ document.addEventListener('DOMContentLoaded', async () => {
   expIdInput.addEventListener('input', updateFppPreview);
 
   function buildFppLink() {
-    const org     = fppOrgInput.value.trim();
-    const team    = fppTeamInput.value.trim();
-    const product = fppProductInput.value.trim();
-    if (!org || !team || !product) {
-      return { error: 'Enter Org, Team, and Product ID (or pick a preset).' };
+    const raw = fppUrlInput.value.trim();
+    if (!raw) {
+      return { error: 'Paste a PDP URL, pick a preset, or open a product page for auto-detect.' };
     }
 
-    let url = `https://www.fanatics.com/o-${org}+t-${team}+f-${product}?utm_medium=${fppChannel}`;
+    let url;
+    try {
+      url = new URL(raw);
+    } catch (_) {
+      return { error: "That doesn't look like a valid URL." };
+    }
 
-    let warning = null;
+    const isPdp = /[+/](?:p|f)-\d+/.test(url.pathname);
+    url.searchParams.delete('utm_medium');
+    url.searchParams.set('utm_medium', fppChannel);
+
+    let warning = isPdp ? null : "This doesn't look like a product page URL — double check it's a PDP link.";
     if (fppVariant) {
       const eid = expIdInput.value.trim();
       if (eid && /^\d+$/.test(eid)) {
-        url += `&__forceExperiment=${eid}:${fppVariant}`;
+        url.searchParams.set('__forceExperiment', `${eid}:${fppVariant}`);
       } else {
-        warning = 'Variant selected but no valid Experiment ID above — link will not force an experiment.';
+        warning = (warning ? warning + ' ' : '') + 'Variant selected but no valid Experiment ID above — link will not force an experiment.';
       }
     }
-    return { url, warning };
+    return { url: url.toString(), warning };
   }
 
   function updateFppPreview() {

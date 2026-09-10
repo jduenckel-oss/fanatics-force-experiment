@@ -837,38 +837,37 @@
       <div class="section-row">
         <span class="section-label">🛒 FPP / Channel Preview</span>
       </div>
+      <div id="fppAutoDetected" class="live-setup-nudge" style="display:none; margin-bottom:6px;"></div>
       <select id="fppPreset" class="fpp-select">
-        <option value="">— Pick a product (or leave blank + edit) —</option>
+        <option value="">— Pick a preset, paste a URL below, or open a PDP —</option>
         <optgroup label="NFL — Jersey">
-          <option value="25:3447:5111108">49ers</option>
-          <option value="25:3444:201435745">Eagles</option>
+          <option value="https://www.fanatics.com/o-25+t-3447+f-5111108">49ers</option>
+          <option value="https://www.fanatics.com/o-25+t-3444+f-201435745">Eagles</option>
         </optgroup>
         <optgroup label="NFL — Hat">
-          <option value="25:3447:203759861">49ers</option>
-          <option value="25:3444:200472205">Eagles</option>
+          <option value="https://www.fanatics.com/o-25+t-3447+f-203759861">49ers</option>
+          <option value="https://www.fanatics.com/o-25+t-3444+f-200472205">Eagles</option>
         </optgroup>
         <optgroup label="MLB — Jersey">
-          <option value="25:3099:3653717">Yankees</option>
-          <option value="25:3105:2001925990">Giants</option>
+          <option value="https://www.fanatics.com/o-25+t-3099+f-3653717">Yankees</option>
+          <option value="https://www.fanatics.com/o-25+t-3105+f-2001925990">Giants</option>
         </optgroup>
         <optgroup label="MLB — Hat">
-          <option value="25:3099:2659252">Yankees</option>
-          <option value="25:3105:2659237">Giants</option>
+          <option value="https://www.fanatics.com/o-25+t-3099+f-2659252">Yankees</option>
+          <option value="https://www.fanatics.com/o-25+t-3105+f-2659237">Giants</option>
         </optgroup>
         <optgroup label="NBA — Jersey">
-          <option value="25:3367:4650305">Warriors</option>
-          <option value="25:3378:201203644">Knicks</option>
+          <option value="https://www.fanatics.com/o-25+t-3367+f-4650305">Warriors</option>
+          <option value="https://www.fanatics.com/o-25+t-3378+f-201203644">Knicks</option>
         </optgroup>
         <optgroup label="NBA — Hat">
-          <option value="25:3367:203453051">Warriors</option>
-          <option value="25:3378:3158247">Knicks</option>
+          <option value="https://www.fanatics.com/o-25+t-3367+f-203453051">Warriors</option>
+          <option value="https://www.fanatics.com/o-25+t-3378+f-3158247">Knicks</option>
         </optgroup>
       </select>
       <div class="fpp-row">
-        <span class="fpp-row-label">Org/Team/ID</span>
-        <input type="text" id="fppOrg" placeholder="org" maxlength="6" style="width:44px; padding:5px 6px; font-size:11px;" />
-        <input type="text" id="fppTeam" placeholder="team" maxlength="8" style="width:56px; padding:5px 6px; font-size:11px;" />
-        <input type="text" id="fppProduct" placeholder="product ID" maxlength="14" style="flex:1; padding:5px 6px; font-size:11px;" />
+        <span class="fpp-row-label">PDP URL</span>
+        <input type="text" id="fppUrlInput" placeholder="Paste any Fanatics PDP URL…" style="flex:1; padding:6px 8px; font-size:11px;" />
       </div>
       <div class="fpp-row">
         <span class="fpp-row-label">Channel</span>
@@ -887,7 +886,7 @@
           <button class="fpp-var-btn" data-variant="D">D</button>
         </div>
       </div>
-      <div class="fpp-preview-url" id="fppPreviewUrl">Pick a product above, or enter Org/Team/ID manually.</div>
+      <div class="fpp-preview-url" id="fppPreviewUrl">Pick a preset, paste a PDP URL, or open a product page for auto-detect.</div>
       <div class="fpp-actions">
         <button class="fpp-action-btn fpp-open-btn" id="fppOpenBtn">Open Link</button>
         <button class="fpp-action-btn fpp-copy-btn" id="fppCopyBtn">Copy Link</button>
