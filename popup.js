@@ -467,6 +467,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Extracts ecomm_prodid from a page's GTM dataLayer — must run on a live tab.
   const EXTRACT_PRODID_FN = () => {
+    // Primary: "Product ID: XXXXXXX" rendered visibly in the page's breadcrumb.
+    // This is part of normal page rendering, so it's available quickly and
+    // isn't gated by analytics timing/tab-visibility the way GTM events can be
+    // in a backgrounded tab.
+    try {
+      const bodyText = document.body ? document.body.innerText : '';
+      const m = bodyText.match(/Product ID:\s*(\d+)/i);
+      if (m) return m[1];
+    } catch (_) {}
+    // Fallback: GTM dataLayer (may not have fired yet in a background tab).
     try {
       const dl = window.dataLayer || [];
       for (const entry of dl) {
