@@ -465,40 +465,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   let fppVariant = '';
   let fppResolvedUrl = null; // the last-resolved bare o-/f- URL, cached so Open/Copy don't re-resolve
 
-  // Extracts ecomm_prodid from a page's GTM dataLayer — must run on a live tab.
-  const EXTRACT_PRODID_FN = () => {
-    // Primary: "Product ID: XXXXXXX" rendered visibly in the page's breadcrumb.
-    // This is part of normal page rendering, so it's available quickly and
-    // isn't gated by analytics timing/tab-visibility the way GTM events can be
-    // in a backgrounded tab.
-    try {
-      const bodyText = document.body ? document.body.innerText : '';
-      const m = bodyText.match(/Product ID:\s*(\d+)/i);
-      if (m) return m[1];
-    } catch (_) {}
-    // Fallback: GTM dataLayer (may not have fired yet in a background tab).
-    try {
-      const dl = window.dataLayer || [];
-      for (const entry of dl) {
-        if (entry && entry[2] && entry[2].ecomm_prodid) return String(entry[2].ecomm_prodid);
-      }
-    } catch (_) {}
-    return null;
-  };
-
-  // The tab's "complete" load status fires before GTM has necessarily pushed its
-  // analytics events into dataLayer, so a single read can race and come back empty
-  // even though the value shows up moments later. Poll a few times before giving up.
-  async function extractProdIdWithRetry(tabId, attempts = 6, delayMs = 500) {
-    for (let i = 0; i < attempts; i++) {
-      const [injection] = await chrome.scripting.executeScript({ target: { tabId }, func: EXTRACT_PRODID_FN });
-      const productId = injection && injection.result;
-      if (productId) return productId;
-      if (i < attempts - 1) await new Promise(r => setTimeout(r, delayMs));
-    }
-    return null;
-  }
-
   function isBareShortUrl(u) {
     try {
       const segments = new URL(u).pathname.split('/').filter(Boolean);
@@ -506,7 +472,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (_) { return false; }
   }
 
-  // Extracts the Org ID from a URL's path.
+  // Extracts the Org ID from a URL's path — last-resort fallback only (see below).
   function extractOrg(u) {
     try {
       const org = new URL(u).pathname.match(/[+/]o-(\d+)/);
@@ -514,25 +480,65 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (_) { return '25'; }
   }
 
-  // Extracts the short-scheme Team ID (and its correctly-PAIRED Org ID) needed for
-  // the "featured department carousel" to appear on FPP pages (confirmed mobile-
-  // viewport-only). IMPORTANT: the team ID is NOT the team number visible in a
-  // copied PDP URL (a different, incompatible namespace — 404s if reused here), and
-  // it's NOT a department/category breadcrumb team ID either (also 404s) — both
-  // tested and confirmed broken. It's also NOT safe to pair the correct team ID with
-  // the *product's own* org ID — confirmed org 8049 (49ers jersey's own org) + team
-  // 3447 (49ers' real short-team-id) still 404s. Org and team must come from the
-  // SAME matched pair.
-  // That matched pair is exposed in the body of the page's own nav content request:
-  // /content/nav/{ver}/{site}/contextual/t-{shortTeamId}-en-US.json, whose JSON
-  // contains entries like "baseResource":"o-25+t-3447" — org and team together,
-  // straight from Fanatics' own data, no guessing. The request URL itself is visible
-  // via the Resource Timing API and the JSON body is same-origin-fetchable, so both
-  // work from a live page (foreground or background tab) without extra permissions.
-  // Confirmed against a known-good real link Shreya/Jake verified shows the carousel
-  // on mobile: https://www.fanatics.com/o-25+t-3447+f-5111108 — this extraction
-  // reproduces o-25 / t-3447 / f-5111108 exactly from the 49ers PDP.
-  const EXTRACT_TEAM_CONTEXT_FN = async () => {
+  // ── Resolved-IDs extraction ──────────────────────────────────────────────────
+  // We need org + team + product together as a matched set, not independently:
+  // - The product's own "big ID" org (from a copied PDP URL, e.g. o-8049) is NOT
+  //   reliably a valid short-scheme org on its own — confirmed o-8049+f-5111108
+  //   (org + product, no team) still 404s.
+  // - Pairing the correct short-scheme team ID with the wrong org also 404s —
+  //   confirmed o-8049+t-3447+f-5111108 404s even though t-3447 is 49ers' real team ID.
+  // - Department/category breadcrumb org+team pairs are a third, also-incompatible
+  //   namespace — also 404s.
+  // The one reliable, SYNCHRONOUS source for a correctly-matched org+team+product
+  // triple is window.__platform_data__.initialAppContext.rids — Fanatics' own
+  // already-resolved short-form IDs, embedded directly in the page's initial HTML.
+  // Being present in the initial render (not fetched async, not analytics-timing-
+  // gated, not tab-visibility-gated) means it's available immediately even in a
+  // backgrounded tab, unlike the old dataLayer/nav-fetch based approaches.
+  // Confirmed exact match against a known-good real link Shreya/Jake verified shows
+  // the department carousel on mobile: https://www.fanatics.com/o-25+t-3447+f-5111108
+  // — the 49ers PDP's rids are exactly [{o:25},{t:3447},{p:5111108}].
+  const EXTRACT_IDS_FN = () => {
+    // Primary: window.__platform_data__ — synchronous, gives a correctly-paired triple.
+    try {
+      const rids = window.__platform_data__ && window.__platform_data__.initialAppContext && window.__platform_data__.initialAppContext.rids;
+      if (Array.isArray(rids)) {
+        const get = (key) => { const r = rids.find(x => x.key === key); return (r && r.ids && r.ids[0]) ? String(r.ids[0]) : null; };
+        const org = get('o');
+        const product = get('p') || get('f');
+        if (org && product) return { org, team: get('t'), product };
+      }
+    } catch (_) {}
+    // Fallback: nav content request body — same org+team pairing, but async/fetched.
+    try {
+      const entries = performance.getEntriesByType('resource').map(e => e.name);
+      const navUrl = entries.find(u => /\/contextual\/t-\d+-/.test(u));
+      if (navUrl) {
+        // Can't synchronously fetch+await inside this sync function on some engines
+        // consistently, so leave this path to the retry loop below to re-check after
+        // giving the async fetch a moment; here we only note that a team ID exists.
+      }
+    } catch (_) {}
+    // Fallback: "Product ID: XXXXXXX" visible breadcrumb text — product ID only, no org/team pairing.
+    try {
+      const bodyText = document.body ? document.body.innerText : '';
+      const m = bodyText.match(/Product ID:\s*(\d+)/i);
+      if (m) return { org: null, team: null, product: m[1] };
+    } catch (_) {}
+    // Fallback: GTM dataLayer — product ID only, may not have fired yet in a background tab.
+    try {
+      const dl = window.dataLayer || [];
+      for (const entry of dl) {
+        if (entry && entry[2] && entry[2].ecomm_prodid) return { org: null, team: null, product: String(entry[2].ecomm_prodid) };
+      }
+    } catch (_) {}
+    return null;
+  };
+
+  // Secondary source used only when EXTRACT_IDS_FN found a product ID but no paired
+  // org (i.e. __platform_data__ wasn't available) — reads the nav content request's
+  // JSON body for the same "o-{org}+t-{team}" pairing Fanatics uses internally.
+  const EXTRACT_NAV_PAIR_FN = async () => {
     try {
       const entries = performance.getEntriesByType('resource').map(e => e.name);
       const navUrl = entries.find(u => /\/contextual\/t-\d+-/.test(u));
@@ -540,19 +546,25 @@ document.addEventListener('DOMContentLoaded', async () => {
       const res = await fetch(navUrl);
       const text = await res.text();
       const paired = text.match(/"baseResource":"o-(\d+)\+t-(\d+)/);
-      if (paired) return { org: paired[1], team: paired[2] };
-      // Fallback: we found the nav request but couldn't parse the paired org out of
-      // its body — return the team alone so the caller can decide whether to use it.
-      const teamOnly = navUrl.match(/\/contextual\/t-(\d+)-/);
-      return teamOnly ? { org: null, team: teamOnly[1] } : null;
+      return paired ? { org: paired[1], team: paired[2] } : null;
     } catch (_) { return null; }
   };
 
-  async function extractTeamContextWithRetry(tabId, attempts = 6, delayMs = 500) {
+  // window.__platform_data__ is embedded synchronously, so this rarely needs more
+  // than one attempt — retries here are just a safety net for very early injection.
+  async function extractResolvedIds(tabId, attempts = 4, delayMs = 400) {
     for (let i = 0; i < attempts; i++) {
-      const [injection] = await chrome.scripting.executeScript({ target: { tabId }, func: EXTRACT_TEAM_CONTEXT_FN });
-      const context = injection && injection.result;
-      if (context && context.team) return context;
+      const [injection] = await chrome.scripting.executeScript({ target: { tabId }, func: EXTRACT_IDS_FN });
+      const result = injection && injection.result;
+      if (result && result.product) {
+        if (result.org) return result; // fully resolved, correctly paired — done
+        // Have a product ID but no paired org yet (platform_data unavailable) —
+        // see if the nav request can supply a matched org+team pair instead.
+        const [pairInjection] = await chrome.scripting.executeScript({ target: { tabId }, func: EXTRACT_NAV_PAIR_FN });
+        const pair = pairInjection && pairInjection.result;
+        if (pair && pair.org) return { org: pair.org, team: pair.team, product: result.product };
+        if (i === attempts - 1) return { org: null, team: null, product: result.product };
+      }
       if (i < attempts - 1) await new Promise(r => setTimeout(r, delayMs));
     }
     return null;
@@ -564,8 +576,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (isBareShortUrl(rawUrl)) return rawUrl; // already the right shape
 
     const fallbackOrg = extractOrg(rawUrl);
-    let productId = null;
-    let context = null;
+    let resolved = null;
     let tempTab = null;
 
     try {
@@ -581,18 +592,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
       }
 
-      productId = await extractProdIdWithRetry(targetTabId);
-      context = await extractTeamContextWithRetry(targetTabId);
+      resolved = await extractResolvedIds(targetTabId);
     } finally {
       if (tempTab) { try { await chrome.tabs.remove(tempTab.id); } catch (_) {} }
     }
 
-    if (!productId) return null;
+    if (!resolved || !resolved.product) return null;
     // Only include the team segment when we got a properly-paired org for it —
     // team + mismatched org 404s, so an unpaired team ID is dropped rather than guessed.
-    const org = (context && context.org) ? context.org : fallbackOrg;
-    const teamSeg = (context && context.org && context.team) ? `t-${context.team}+` : '';
-    return `https://www.fanatics.com/o-${org}+${teamSeg}f-${productId}`;
+    const org = resolved.org || fallbackOrg;
+    const teamSeg = (resolved.org && resolved.team) ? `t-${resolved.team}+` : '';
+    return `https://www.fanatics.com/o-${org}+${teamSeg}f-${resolved.product}`;
   }
 
   // ── Auto-fill from the current tab if it's a PDP (fast path — no background tab needed) ──
@@ -606,13 +616,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         updateFppPreview();
         return;
       }
-      const productId = await extractProdIdWithRetry(tab.id, 3, 400); // current tab has likely been open a while, so fewer/shorter retries
-      if (productId) {
-        const context = await extractTeamContextWithRetry(tab.id, 3, 400);
-        const org = (context && context.org) ? context.org : extractOrg(tabUrl);
-        const teamSeg = (context && context.org && context.team) ? `t-${context.team}+` : '';
-        fppUrlInput.value = `https://www.fanatics.com/o-${org}+${teamSeg}f-${productId}`;
-        fppAutoDetected.textContent = `✓ Auto-detected from this page (short ID ${productId}${teamSeg ? `, team ${context.team}` : ''})`;
+      const resolved = await extractResolvedIds(tab.id, 2, 400); // current tab has likely been open a while, so fewer/shorter retries
+      if (resolved && resolved.product) {
+        const org = resolved.org || extractOrg(tabUrl);
+        const teamSeg = (resolved.org && resolved.team) ? `t-${resolved.team}+` : '';
+        fppUrlInput.value = `https://www.fanatics.com/o-${org}+${teamSeg}f-${resolved.product}`;
+        fppAutoDetected.textContent = `✓ Auto-detected from this page (short ID ${resolved.product}${teamSeg ? `, team ${resolved.team}` : ''})`;
         fppAutoDetected.style.display = 'block';
         updateFppPreview();
       }
