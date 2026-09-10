@@ -288,6 +288,86 @@
     }
     .clear-btn:hover { color: #888; }
 
+    /* FPP / Channel link builder */
+    .fpp-section { margin-bottom: 10px; }
+    .fpp-select {
+      width: 100%;
+      margin-bottom: 7px;
+    }
+    .fpp-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 7px;
+    }
+    .fpp-row-label {
+      font-size: 10.5px;
+      font-weight: 600;
+      color: #888;
+      flex-shrink: 0;
+      width: 52px;
+    }
+    .fpp-channel-toggle { display: flex; gap: 4px; flex: 1; }
+    .fpp-channel-btn {
+      flex: 1;
+      padding: 5px 4px;
+      font-size: 11px;
+      font-weight: 600;
+      border: 1.5px solid #DDD;
+      border-radius: 6px;
+      background: #F5F5F5;
+      color: #888;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .fpp-channel-btn.active[data-channel="social"] { background: #002D72; color: #fff; border-color: #002D72; }
+    .fpp-channel-btn.active[data-channel="cse"] { background: #2E7D32; color: #fff; border-color: #2E7D32; }
+    .fpp-variant-row { display: flex; gap: 4px; flex: 1; }
+    .fpp-var-btn {
+      flex: 1;
+      padding: 5px 0;
+      border: 1.5px solid #DDD;
+      border-radius: 5px;
+      background: #F5F5F5;
+      color: #888;
+      font-size: 10.5px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.12s;
+    }
+    .fpp-var-btn:hover { border-color: #AAA; color: #444; background: #EBEBEB; }
+    .fpp-var-btn.selected { background: #555; color: #fff; border-color: #555; }
+    .fpp-var-btn.selected[data-variant="A"] { background: #002D72; border-color: #002D72; }
+    .fpp-var-btn.selected[data-variant="B"] { background: #CC0000; border-color: #CC0000; }
+    .fpp-var-btn.selected[data-variant="C"] { background: #2E7D32; border-color: #2E7D32; }
+    .fpp-var-btn.selected[data-variant="D"] { background: #6A1B9A; border-color: #6A1B9A; }
+    .fpp-actions { display: flex; gap: 6px; }
+    .fpp-action-btn {
+      flex: 1;
+      padding: 8px;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .fpp-action-btn:hover { opacity: 0.85; }
+    .fpp-open-btn { background: #002D72; color: #fff; }
+    .fpp-copy-btn { background: #F0F4FF; color: #002D72; border: 1.5px solid #C5D3F5; }
+    .fpp-preview-url {
+      font-size: 10px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      color: #999;
+      word-break: break-all;
+      white-space: pre-wrap;
+      margin-bottom: 7px;
+      line-height: 1.4;
+      background: #FAFAFA;
+      border-radius: 5px;
+      padding: 5px 7px;
+    }
+
     /* Live tests section */
     .live-tests-section { margin-bottom: 10px; }
     .live-tests-list {
@@ -749,6 +829,70 @@
     </button>
 
     <div class="status" id="status"></div>
+
+    <hr class="divider">
+
+    <!-- FPP / Channel Link Builder -->
+    <div class="fpp-section">
+      <div class="section-row">
+        <span class="section-label">🛒 FPP / Channel Preview</span>
+      </div>
+      <select id="fppPreset" class="fpp-select">
+        <option value="">— Pick a product (or leave blank + edit) —</option>
+        <optgroup label="NFL — Jersey">
+          <option value="25:3447:5111108">49ers</option>
+          <option value="25:3444:201435745">Eagles</option>
+        </optgroup>
+        <optgroup label="NFL — Hat">
+          <option value="25:3447:203759861">49ers</option>
+          <option value="25:3444:200472205">Eagles</option>
+        </optgroup>
+        <optgroup label="MLB — Jersey">
+          <option value="25:3099:3653717">Yankees</option>
+          <option value="25:3105:2001925990">Giants</option>
+        </optgroup>
+        <optgroup label="MLB — Hat">
+          <option value="25:3099:2659252">Yankees</option>
+          <option value="25:3105:2659237">Giants</option>
+        </optgroup>
+        <optgroup label="NBA — Jersey">
+          <option value="25:3367:4650305">Warriors</option>
+          <option value="25:3378:201203644">Knicks</option>
+        </optgroup>
+        <optgroup label="NBA — Hat">
+          <option value="25:3367:203453051">Warriors</option>
+          <option value="25:3378:3158247">Knicks</option>
+        </optgroup>
+      </select>
+      <div class="fpp-row">
+        <span class="fpp-row-label">Org/Team/ID</span>
+        <input type="text" id="fppOrg" placeholder="org" maxlength="6" style="width:44px; padding:5px 6px; font-size:11px;" />
+        <input type="text" id="fppTeam" placeholder="team" maxlength="8" style="width:56px; padding:5px 6px; font-size:11px;" />
+        <input type="text" id="fppProduct" placeholder="product ID" maxlength="14" style="flex:1; padding:5px 6px; font-size:11px;" />
+      </div>
+      <div class="fpp-row">
+        <span class="fpp-row-label">Channel</span>
+        <div class="fpp-channel-toggle" id="fppChannelToggle">
+          <button class="fpp-channel-btn active" data-channel="social">Social</button>
+          <button class="fpp-channel-btn" data-channel="cse">PLA</button>
+        </div>
+      </div>
+      <div class="fpp-row">
+        <span class="fpp-row-label">Variant</span>
+        <div class="fpp-variant-row" id="fppVariantRow">
+          <button class="fpp-var-btn selected" data-variant="">None</button>
+          <button class="fpp-var-btn" data-variant="A">A</button>
+          <button class="fpp-var-btn" data-variant="B">B</button>
+          <button class="fpp-var-btn" data-variant="C">C</button>
+          <button class="fpp-var-btn" data-variant="D">D</button>
+        </div>
+      </div>
+      <div class="fpp-preview-url" id="fppPreviewUrl">Pick a product above, or enter Org/Team/ID manually.</div>
+      <div class="fpp-actions">
+        <button class="fpp-action-btn fpp-open-btn" id="fppOpenBtn">Open Link</button>
+        <button class="fpp-action-btn fpp-copy-btn" id="fppCopyBtn">Copy Link</button>
+      </div>
+    </div>
 
     <hr class="divider">
 
