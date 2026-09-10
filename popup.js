@@ -444,9 +444,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   renderLists();
 
   // ── FPP / Channel Link Builder ──────────────────────────────────────────────
-  // Works by taking a real PDP URL (pasted, from a preset, or the current tab)
-  // and appending/overriding utm_medium — no ID reconstruction, so it's safe
-  // against Fanatics' different internal ID schemes.
+  // IMPORTANT: the special FPP template (data-trk-id="FPP") only renders on the
+  // bare short-link form: https://www.fanatics.com/o-{org}+f-{shortProductId}
+  // with NO SEO slug in front of it. A full URL with the slug always renders
+  // the normal PDP template regardless of utm_medium.
+  // The shortProductId is NOT the big numeric ID visible in a normal copied
+  // PDP URL — it's a separate, shorter ID only exposed via the page's own GTM
+  // dataLayer (ecomm_prodid). So converting a full PDP URL requires briefly
+  // loading it in a background tab to read that value off the live page.
   const fppPreset        = document.getElementById('fppPreset');
   const fppUrlInput      = document.getElementById('fppUrlInput');
   const fppChannelToggle = document.getElementById('fppChannelToggle');
@@ -458,45 +463,85 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   let fppChannel = 'social';
   let fppVariant = '';
+  let fppResolvedUrl = null; // the last-resolved bare o-/f- URL, cached so Open/Copy don't re-resolve
 
-  function looksLikePdpUrl(u) {
-    try { return /[+/](?:p|f)-\d+/.test(new URL(u).pathname); } catch (_) { return false; }
+  // Extracts ecomm_prodid from a page's GTM dataLayer — must run on a live tab.
+  const EXTRACT_PRODID_FN = () => {
+    try {
+      const dl = window.dataLayer || [];
+      for (const entry of dl) {
+        if (entry && entry[2] && entry[2].ecomm_prodid) return String(entry[2].ecomm_prodid);
+      }
+    } catch (_) {}
+    return null;
+  };
+
+  function isBareShortUrl(u) {
+    try {
+      const segments = new URL(u).pathname.split('/').filter(Boolean);
+      return segments.length === 1 && /^o-\d+/.test(segments[0]);
+    } catch (_) { return false; }
   }
 
-  // ── Auto-fill from the current tab if it's a PDP ────────────────────────────
+  // Extracts the Org ID from a URL's path. Team ID is deliberately NOT extracted —
+  // tested and confirmed that a team number scraped from a full-slug URL belongs
+  // to the incompatible "big ID" namespace and actively breaks the short link (404),
+  // even though the short link works fine with no team segment at all.
+  function extractOrg(u) {
+    try {
+      const org = new URL(u).pathname.match(/[+/]o-(\d+)/);
+      return org ? org[1] : '25';
+    } catch (_) { return '25'; }
+  }
+
+  // Resolve any PDP URL (bare or full-slug) down to the short o-/f- form needed for FPP.
+  // Opens a background tab only when necessary (full-slug URLs).
+  async function resolveToShortFppUrl(rawUrl, existingTabId) {
+    if (isBareShortUrl(rawUrl)) return rawUrl; // already the right shape
+
+    const org = extractOrg(rawUrl);
+    let productId = null;
+    let tempTab = null;
+
+    try {
+      const targetTabId = existingTabId || (tempTab = await chrome.tabs.create({ url: rawUrl, active: false })).id;
+
+      if (tempTab) {
+        // Wait for the background tab to finish loading (with a timeout safety net)
+        await new Promise(resolve => {
+          const done = () => { chrome.tabs.onUpdated.removeListener(listener); resolve(); };
+          const listener = (tabId, info) => { if (tabId === tempTab.id && info.status === 'complete') done(); };
+          chrome.tabs.onUpdated.addListener(listener);
+          setTimeout(done, 7000);
+        });
+      }
+
+      const [injection] = await chrome.scripting.executeScript({ target: { tabId: targetTabId }, func: EXTRACT_PRODID_FN });
+      productId = injection && injection.result;
+    } finally {
+      if (tempTab) { try { await chrome.tabs.remove(tempTab.id); } catch (_) {} }
+    }
+
+    if (!productId) return null;
+    return `https://www.fanatics.com/o-${org}+f-${productId}`;
+  }
+
+  // ── Auto-fill from the current tab if it's a PDP (fast path — no background tab needed) ──
   (async () => {
     try {
-      if (onFanaticsSite && looksLikePdpUrl(tabUrl)) {
+      if (!onFanaticsSite) return;
+      if (isBareShortUrl(tabUrl)) {
         fppUrlInput.value = tabUrl;
         fppAutoDetected.textContent = '✓ Auto-filled from this page';
         fppAutoDetected.style.display = 'block';
         updateFppPreview();
         return;
       }
-      // Fallback for fanatics.com pages where the URL itself doesn't show a p-/f- id
-      // (e.g. it was rewritten client-side) — read it from the page's own analytics data.
-      const hostname = currentHostname.replace(/^www\./, '');
-      if (hostname !== 'fanatics.com') return;
-
-      const [injection] = await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: () => {
-          try {
-            const dl = window.dataLayer || [];
-            for (const entry of dl) {
-              if (entry && entry[2] && entry[2].ecomm_pagetype === 'PDP' && entry[2].ecomm_prodid) {
-                return String(entry[2].ecomm_prodid);
-              }
-            }
-          } catch (_) {}
-          return null;
-        },
-      });
-
+      const [injection] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: EXTRACT_PRODID_FN });
       const productId = injection && injection.result;
       if (productId) {
-        fppUrlInput.value = `https://www.fanatics.com/o-25+f-${productId}`;
-        fppAutoDetected.textContent = `✓ Product ID ${productId} auto-detected (reconstructed — team ID omitted)`;
+        fppUrlInput.value = `https://www.fanatics.com/o-${extractOrg(tabUrl)}+f-${productId}`;
+        fppAutoDetected.textContent = `✓ Auto-detected from this page (short ID ${productId})`;
         fppAutoDetected.style.display = 'block';
         updateFppPreview();
       }
@@ -512,7 +557,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateFppPreview();
   });
 
-  fppUrlInput.addEventListener('input', updateFppPreview);
+  fppUrlInput.addEventListener('input', () => { fppResolvedUrl = null; updateFppPreview(); });
 
   fppChannelToggle.querySelectorAll('.fpp-channel-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -535,55 +580,69 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Keep the preview live if the Experiment ID field changes too (since it's used when a variant is picked)
   expIdInput.addEventListener('input', updateFppPreview);
 
-  function buildFppLink() {
-    const raw = fppUrlInput.value.trim();
-    if (!raw) {
-      return { error: 'Paste a PDP URL, pick a preset, or open a product page for auto-detect.' };
-    }
-
+  function applyChannelAndVariant(bareUrl) {
     let url;
-    try {
-      url = new URL(raw);
-    } catch (_) {
-      return { error: "That doesn't look like a valid URL." };
-    }
-
-    const isPdp = /[+/](?:p|f)-\d+/.test(url.pathname);
-    url.searchParams.delete('utm_medium');
+    try { url = new URL(bareUrl); } catch (_) { return { error: "That doesn't look like a valid URL." }; }
     url.searchParams.set('utm_medium', fppChannel);
 
-    let warning = isPdp ? null : "This doesn't look like a product page URL — double check it's a PDP link.";
+    let warning = null;
     if (fppVariant) {
       const eid = expIdInput.value.trim();
       if (eid && /^\d+$/.test(eid)) {
         url.searchParams.set('__forceExperiment', `${eid}:${fppVariant}`);
       } else {
-        warning = (warning ? warning + ' ' : '') + 'Variant selected but no valid Experiment ID above — link will not force an experiment.';
+        warning = 'Variant selected but no valid Experiment ID above — link will not force an experiment.';
       }
     }
     return { url: url.toString(), warning };
   }
 
   function updateFppPreview() {
-    const result = buildFppLink();
-    if (result.error) {
-      fppPreviewUrl.textContent = result.error;
+    const raw = fppUrlInput.value.trim();
+    if (!raw) {
+      fppPreviewUrl.textContent = 'Paste a PDP URL, pick a preset, or open a product page for auto-detect.';
       fppPreviewUrl.style.color = '#BBB';
       return;
     }
-    fppPreviewUrl.style.color = result.warning ? '#B45309' : '#999';
-    fppPreviewUrl.textContent = result.warning ? `${result.url}\n⚠ ${result.warning}` : result.url;
+    if (isBareShortUrl(raw)) {
+      const result = applyChannelAndVariant(raw);
+      if (result.error) { fppPreviewUrl.textContent = result.error; fppPreviewUrl.style.color = '#BBB'; return; }
+      fppPreviewUrl.style.color = result.warning ? '#B45309' : '#999';
+      fppPreviewUrl.textContent = result.warning ? `${result.url}\n⚠ ${result.warning}` : result.url;
+    } else {
+      fppPreviewUrl.style.color = '#B45309';
+      fppPreviewUrl.textContent = 'This is a full PDP URL — click "Open Link" or "Copy Link" to resolve it to an FPP link (briefly loads it in the background to find the short product ID).';
+    }
+  }
+
+  async function getFinalFppUrl() {
+    const raw = fppUrlInput.value.trim();
+    if (!raw) return { error: 'Paste a PDP URL, pick a preset, or open a product page for auto-detect.' };
+
+    let bareUrl = raw;
+    if (!isBareShortUrl(raw)) {
+      if (fppResolvedUrl) {
+        bareUrl = fppResolvedUrl;
+      } else {
+        showStatus('Resolving product ID… (loading page briefly)', 'success');
+        const resolved = await resolveToShortFppUrl(raw, onFanaticsSite && raw === tabUrl ? tab.id : null);
+        if (!resolved) return { error: "Couldn't resolve this URL to a product ID. Double check it's a Fanatics PDP link." };
+        fppResolvedUrl = resolved;
+        bareUrl = resolved;
+      }
+    }
+    return applyChannelAndVariant(bareUrl);
   }
 
   fppOpenBtn.addEventListener('click', async () => {
-    const result = buildFppLink();
+    const result = await getFinalFppUrl();
     if (result.error) { showStatus(result.error, 'error'); return; }
     await chrome.tabs.create({ url: result.url });
     showStatus('✓ Opened FPP link in new tab', 'success');
   });
 
   fppCopyBtn.addEventListener('click', async () => {
-    const result = buildFppLink();
+    const result = await getFinalFppUrl();
     if (result.error) { showStatus(result.error, 'error'); return; }
     try {
       await navigator.clipboard.writeText(result.url);
