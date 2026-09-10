@@ -476,6 +476,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     return null;
   };
 
+  // The tab's "complete" load status fires before GTM has necessarily pushed its
+  // analytics events into dataLayer, so a single read can race and come back empty
+  // even though the value shows up moments later. Poll a few times before giving up.
+  async function extractProdIdWithRetry(tabId, attempts = 6, delayMs = 500) {
+    for (let i = 0; i < attempts; i++) {
+      const [injection] = await chrome.scripting.executeScript({ target: { tabId }, func: EXTRACT_PRODID_FN });
+      const productId = injection && injection.result;
+      if (productId) return productId;
+      if (i < attempts - 1) await new Promise(r => setTimeout(r, delayMs));
+    }
+    return null;
+  }
+
   function isBareShortUrl(u) {
     try {
       const segments = new URL(u).pathname.split('/').filter(Boolean);
@@ -516,8 +529,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
       }
 
-      const [injection] = await chrome.scripting.executeScript({ target: { tabId: targetTabId }, func: EXTRACT_PRODID_FN });
-      productId = injection && injection.result;
+      productId = await extractProdIdWithRetry(targetTabId);
     } finally {
       if (tempTab) { try { await chrome.tabs.remove(tempTab.id); } catch (_) {} }
     }
@@ -537,8 +549,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         updateFppPreview();
         return;
       }
-      const [injection] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: EXTRACT_PRODID_FN });
-      const productId = injection && injection.result;
+      const productId = await extractProdIdWithRetry(tab.id, 3, 400); // current tab has likely been open a while, so fewer/shorter retries
       if (productId) {
         fppUrlInput.value = `https://www.fanatics.com/o-${extractOrg(tabUrl)}+f-${productId}`;
         fppAutoDetected.textContent = `✓ Auto-detected from this page (short ID ${productId})`;
