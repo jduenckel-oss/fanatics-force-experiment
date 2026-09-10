@@ -443,6 +443,116 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── Initial render ──────────────────────────────────────────────────────────
   renderLists();
 
+  // ── FPP / Channel Link Builder ──────────────────────────────────────────────
+  const fppPreset       = document.getElementById('fppPreset');
+  const fppOrgInput     = document.getElementById('fppOrg');
+  const fppTeamInput    = document.getElementById('fppTeam');
+  const fppProductInput = document.getElementById('fppProduct');
+  const fppChannelToggle = document.getElementById('fppChannelToggle');
+  const fppVariantRow   = document.getElementById('fppVariantRow');
+  const fppPreviewUrl   = document.getElementById('fppPreviewUrl');
+  const fppOpenBtn      = document.getElementById('fppOpenBtn');
+  const fppCopyBtn      = document.getElementById('fppCopyBtn');
+
+  let fppChannel = 'social';
+  let fppVariant = '';
+
+  // Default Org to 25 (Fanatics.com) since that's what all current presets use
+  fppOrgInput.value = '25';
+
+  fppPreset.addEventListener('change', () => {
+    if (!fppPreset.value) return;
+    const [org, team, product] = fppPreset.value.split(':');
+    fppOrgInput.value = org;
+    fppTeamInput.value = team;
+    fppProductInput.value = product;
+    updateFppPreview();
+  });
+
+  [fppOrgInput, fppTeamInput, fppProductInput].forEach(el => {
+    el.addEventListener('input', updateFppPreview);
+  });
+
+  fppChannelToggle.querySelectorAll('.fpp-channel-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      fppChannel = btn.dataset.channel;
+      fppChannelToggle.querySelectorAll('.fpp-channel-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      updateFppPreview();
+    });
+  });
+
+  fppVariantRow.querySelectorAll('.fpp-var-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      fppVariant = btn.dataset.variant;
+      fppVariantRow.querySelectorAll('.fpp-var-btn').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      updateFppPreview();
+    });
+  });
+
+  // Keep the preview live if the Experiment ID field changes too (since it's used when a variant is picked)
+  expIdInput.addEventListener('input', updateFppPreview);
+
+  function buildFppLink() {
+    const org     = fppOrgInput.value.trim();
+    const team    = fppTeamInput.value.trim();
+    const product = fppProductInput.value.trim();
+    if (!org || !team || !product) {
+      return { error: 'Enter Org, Team, and Product ID (or pick a preset).' };
+    }
+
+    let url = `https://www.fanatics.com/o-${org}+t-${team}+f-${product}?utm_medium=${fppChannel}`;
+
+    let warning = null;
+    if (fppVariant) {
+      const eid = expIdInput.value.trim();
+      if (eid && /^\d+$/.test(eid)) {
+        url += `&__forceExperiment=${eid}:${fppVariant}`;
+      } else {
+        warning = 'Variant selected but no valid Experiment ID above — link will not force an experiment.';
+      }
+    }
+    return { url, warning };
+  }
+
+  function updateFppPreview() {
+    const result = buildFppLink();
+    if (result.error) {
+      fppPreviewUrl.textContent = result.error;
+      fppPreviewUrl.style.color = '#BBB';
+      return;
+    }
+    fppPreviewUrl.style.color = result.warning ? '#B45309' : '#999';
+    fppPreviewUrl.textContent = result.warning ? `${result.url}\n⚠ ${result.warning}` : result.url;
+  }
+
+  fppOpenBtn.addEventListener('click', async () => {
+    const result = buildFppLink();
+    if (result.error) { showStatus(result.error, 'error'); return; }
+    await chrome.tabs.create({ url: result.url });
+    showStatus('✓ Opened FPP link in new tab', 'success');
+  });
+
+  fppCopyBtn.addEventListener('click', async () => {
+    const result = buildFppLink();
+    if (result.error) { showStatus(result.error, 'error'); return; }
+    try {
+      await navigator.clipboard.writeText(result.url);
+      showStatus('✓ Copied FPP link to clipboard', 'copied');
+    } catch (_) {
+      const ta = document.createElement('textarea');
+      ta.value = result.url;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      showStatus('✓ Copied FPP link to clipboard', 'copied');
+    }
+  });
+
+  updateFppPreview();
+
   // ── Live Tests ──────────────────────────────────────────────────────────────
   const liveTestsList   = document.getElementById('liveTestsList');
   const liveRefreshBtn  = document.getElementById('liveRefreshBtn');
