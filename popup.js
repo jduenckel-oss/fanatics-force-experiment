@@ -506,10 +506,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (_) { return false; }
   }
 
-  // Extracts the Org ID from a URL's path. Team ID is deliberately NOT extracted —
-  // tested and confirmed that a team number scraped from a full-slug URL belongs
-  // to the incompatible "big ID" namespace and actively breaks the short link (404),
-  // even though the short link works fine with no team segment at all.
+  // Extracts the Org ID from a URL's path.
   function extractOrg(u) {
     try {
       const org = new URL(u).pathname.match(/[+/]o-(\d+)/);
@@ -517,13 +514,46 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (_) { return '25'; }
   }
 
-  // Resolve any PDP URL (bare or full-slug) down to the short o-/f- form needed for FPP.
+  // Extracts the short-scheme Team ID needed for the "featured department carousel"
+  // to appear on FPP pages. IMPORTANT: this is NOT the team number visible in a copied
+  // PDP URL (that's a different, incompatible "big ID" namespace and 404s if reused
+  // here), and it's NOT a department/category breadcrumb team ID either (also a
+  // different namespace, also 404s) — both were tested and confirmed broken.
+  // The correct short-scheme team ID only shows up via the page's own nav content
+  // request: /content/nav/{ver}/{site}/contextual/t-{shortTeamId}-en-US.json. That
+  // request is visible in the browser's Resource Timing API, so we can read it off
+  // any live page (foreground or background tab) without extra permissions.
+  // Confirmed live on both NFL (Broncos → t-3427) and MLB (Reds → t-3082) PDPs, and
+  // that including it does not break the FPP link — it still renders data-trk-id="FPP".
+  const EXTRACT_TEAM_ID_FN = () => {
+    try {
+      const entries = performance.getEntriesByType('resource').map(e => e.name);
+      for (const url of entries) {
+        const m = url.match(/\/contextual\/t-(\d+)-/);
+        if (m) return m[1];
+      }
+    } catch (_) {}
+    return null;
+  };
+
+  async function extractTeamIdWithRetry(tabId, attempts = 6, delayMs = 500) {
+    for (let i = 0; i < attempts; i++) {
+      const [injection] = await chrome.scripting.executeScript({ target: { tabId }, func: EXTRACT_TEAM_ID_FN });
+      const teamId = injection && injection.result;
+      if (teamId) return teamId;
+      if (i < attempts - 1) await new Promise(r => setTimeout(r, delayMs));
+    }
+    return null;
+  }
+
+  // Resolve any PDP URL (bare or full-slug) down to the short o-/t-/f- form needed for FPP.
   // Opens a background tab only when necessary (full-slug URLs).
   async function resolveToShortFppUrl(rawUrl, existingTabId) {
     if (isBareShortUrl(rawUrl)) return rawUrl; // already the right shape
 
     const org = extractOrg(rawUrl);
     let productId = null;
+    let teamId = null;
     let tempTab = null;
 
     try {
@@ -540,12 +570,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       productId = await extractProdIdWithRetry(targetTabId);
+      teamId = await extractTeamIdWithRetry(targetTabId);
     } finally {
       if (tempTab) { try { await chrome.tabs.remove(tempTab.id); } catch (_) {} }
     }
 
     if (!productId) return null;
-    return `https://www.fanatics.com/o-${org}+f-${productId}`;
+    const teamSeg = teamId ? `t-${teamId}+` : '';
+    return `https://www.fanatics.com/o-${org}+${teamSeg}f-${productId}`;
   }
 
   // ── Auto-fill from the current tab if it's a PDP (fast path — no background tab needed) ──
@@ -561,8 +593,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
       const productId = await extractProdIdWithRetry(tab.id, 3, 400); // current tab has likely been open a while, so fewer/shorter retries
       if (productId) {
-        fppUrlInput.value = `https://www.fanatics.com/o-${extractOrg(tabUrl)}+f-${productId}`;
-        fppAutoDetected.textContent = `✓ Auto-detected from this page (short ID ${productId})`;
+        const teamId = await extractTeamIdWithRetry(tab.id, 3, 400);
+        const teamSeg = teamId ? `t-${teamId}+` : '';
+        fppUrlInput.value = `https://www.fanatics.com/o-${extractOrg(tabUrl)}+${teamSeg}f-${productId}`;
+        fppAutoDetected.textContent = `✓ Auto-detected from this page (short ID ${productId}${teamId ? `, team ${teamId}` : ''})`;
         fppAutoDetected.style.display = 'block';
         updateFppPreview();
       }
